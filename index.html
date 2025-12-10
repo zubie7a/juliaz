@@ -1,0 +1,174 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Juliaz</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.9/dat.gui.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            font-family: Arial, sans-serif;
+            color: #fff;
+            overflow: hidden;
+        }
+        #canvas {
+            display: block;
+        }
+        .dg {
+            font-size: 11px !important;
+        }
+        .dg.ac {
+            z-index: 10 !important;
+        }
+        h1 {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            margin: 0;
+            font-size: 24px;
+            z-index: 9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Julia Set Fractal</h1>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let params = {
+            cRe: -0.7,
+            cIm: 0.27,
+            zoom: 1,
+            maxIter: 100,
+            mouseControl: false
+        };
+
+        let paletteHueShift = 0;
+        let paletteSaturation = 1;
+        let paletteLightness = 0.5;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return {
+                r: Math.round(r * 255),
+                g: Math.round(g * 255),
+                b: Math.round(b * 255)
+            };
+        }
+
+        function drawJuliaSet() {
+            if (canvas.width === 0 || canvas.height === 0) return;
+            
+            const width = canvas.width;
+            const height = canvas.height;
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+
+            for (let i = 0; i < width; i++) {
+                for (let j = 0; j < height; j++) {
+                    const x = (i - width / 2) / (width / 4 / params.zoom);
+                    const y = (j - height / 2) / (height / 4 / params.zoom);
+
+                    let zRe = x;
+                    let zIm = y;
+                    let iter = 0;
+
+                    for (let k = 0; k < params.maxIter; k++) {
+                        if (zRe * zRe + zIm * zIm > 4) {
+                            iter = k;
+                            break;
+                        }
+                        const tempRe = zRe * zRe - zIm * zIm + params.cRe;
+                        const tempIm = 2 * zRe * zIm + params.cIm;
+                        zRe = tempRe;
+                        zIm = tempIm;
+                        iter = k;
+                    }
+
+                    const hue = ((iter / params.maxIter * 360) + paletteHueShift) % 360;
+                    const rgb = hslToRgb(hue / 360, paletteSaturation, iter === params.maxIter - 1 ? 0 : paletteLightness);
+                    
+                    const pixelIndex = (i + j * width) * 4;
+                    data[pixelIndex] = rgb.r;
+                    data[pixelIndex + 1] = rgb.g;
+                    data[pixelIndex + 2] = rgb.b;
+                    data[pixelIndex + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function randomizePalette() {
+            paletteHueShift = Math.random() * 360;
+            drawJuliaSet();
+        }
+
+        const gui = new dat.GUI();
+        gui.add(params, 'cRe', -1, 1, 0.01).onChange(drawJuliaSet);
+        gui.add(params, 'cIm', -1, 1, 0.01).onChange(drawJuliaSet);
+        gui.add(params, 'zoom', 0.1, 5, 0.1).onChange(drawJuliaSet);
+        gui.add(params, 'maxIter', 10, 256, 10).onChange(drawJuliaSet);
+        gui.add(params, 'mouseControl');
+        gui.add({randomPalette: randomizePalette}, 'randomPalette').name('Random Palette');
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!params.mouseControl) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            params.cRe = (x / canvas.width) * 2 - 1;
+            params.cIm = (y / canvas.height) * 2 - 1;
+            
+            gui.__controllers.forEach(controller => {
+                controller.updateDisplay();
+            });
+            
+            drawJuliaSet();
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            drawJuliaSet();
+        });
+
+        resizeCanvas();
+        setTimeout(() => drawJuliaSet(), 100);
+    </script>
+</body>
+</html>
