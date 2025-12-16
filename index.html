@@ -52,12 +52,18 @@
             cIm: 0.27,
             zoom: 1,
             maxIter: 100,
-            mouseControl: false
+            mouseControl: false,
+            autoMode: false
         };
 
         let paletteHueShift = 0;
         let paletteSaturation = 1;
         let paletteLightness = 0.5;
+
+        // Brownian motion state
+        let brownianVelocityRe = 0;
+        let brownianVelocityIm = 0;
+        let animationId = null;
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -138,12 +144,93 @@
             drawJuliaSet();
         }
 
+        function updateBrownianMotion() {
+            // Add random noise to velocity (brownian motion)
+            const noiseStrength = 0.02;
+            brownianVelocityRe += (Math.random() - 0.5) * noiseStrength;
+            brownianVelocityIm += (Math.random() - 0.5) * noiseStrength;
+            
+            // Apply damping to prevent runaway velocities
+            brownianVelocityRe *= 0.95;
+            brownianVelocityIm *= 0.95;
+            
+            // Update position
+            params.cRe += brownianVelocityRe;
+            params.cIm += brownianVelocityIm;
+            
+            // Constrain to [-1, 1] for both real and imaginary parts
+            params.cRe = Math.max(-1.0, Math.min(1.0, params.cRe));
+            params.cIm = Math.max(-1.0, Math.min(1.0, params.cIm));
+            
+            // Bounce off boundaries (reverse velocity when hitting boundary)
+            if (params.cRe <= -1.0 || params.cRe >= 1.0) {
+                brownianVelocityRe *= -0.5;
+            }
+            if (params.cIm <= -1.0 || params.cIm >= 1.0) {
+                brownianVelocityIm *= -0.5;
+            }
+            
+            // Update GUI display
+            gui.__controllers.forEach(controller => {
+                if (controller.property === 'cRe' || controller.property === 'cIm') {
+                    controller.updateDisplay();
+                }
+            });
+            
+            // Redraw fractal
+            drawJuliaSet();
+        }
+
+        function startAutoMode() {
+            if (animationId) return; // Already running
+            
+            function animate() {
+                if (params.autoMode) {
+                    updateBrownianMotion();
+                    animationId = requestAnimationFrame(animate);
+                } else {
+                    animationId = null;
+                }
+            }
+            animate();
+        }
+
+        function stopAutoMode() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
         const gui = new dat.GUI();
         gui.add(params, 'cRe', -1, 1, 0.01).onChange(drawJuliaSet);
         gui.add(params, 'cIm', -1, 1, 0.01).onChange(drawJuliaSet);
         gui.add(params, 'zoom', 0.1, 5, 0.1).onChange(drawJuliaSet);
         gui.add(params, 'maxIter', 10, 256, 10).onChange(drawJuliaSet);
-        gui.add(params, 'mouseControl');
+        gui.add(params, 'mouseControl').onChange((value) => {
+            if (value) {
+                params.autoMode = false; // Disable auto mode when mouse control is on
+                stopAutoMode();
+                gui.__controllers.forEach(controller => {
+                    if (controller.property === 'autoMode') {
+                        controller.updateDisplay();
+                    }
+                });
+            }
+        });
+        gui.add(params, 'autoMode').onChange((value) => {
+            if (value) {
+                params.mouseControl = false; // Disable mouse control when auto mode is on
+                gui.__controllers.forEach(controller => {
+                    if (controller.property === 'mouseControl') {
+                        controller.updateDisplay();
+                    }
+                });
+                startAutoMode();
+            } else {
+                stopAutoMode();
+            }
+        }).name('Auto Mode');
         gui.add({randomPalette: randomizePalette}, 'randomPalette').name('Random Palette');
 
         canvas.addEventListener('mousemove', (e) => {
